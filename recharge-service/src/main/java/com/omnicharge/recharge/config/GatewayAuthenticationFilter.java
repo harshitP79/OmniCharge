@@ -1,0 +1,52 @@
+package com.omnicharge.recharge.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Collections;
+
+@Component
+@Slf4j
+public class GatewayAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final String HEADER_USER_ID = "X-User-Id";
+    private static final String HEADER_USER_ROLE = "X-User-Role";
+    private static final String HEADER_USER_EMAIL = "X-User-Email";
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String userId = request.getHeader(HEADER_USER_ID);
+        String userRole = request.getHeader(HEADER_USER_ROLE);
+        String userEmail = request.getHeader(HEADER_USER_EMAIL);
+
+        if (userId != null && userRole != null) {
+            // SUPER-ROBUST ROLE HANDLING: Standardize to "ROLE_XXX"
+            String sanitizedRole = userRole.toUpperCase().trim();
+            String finalRole = sanitizedRole.startsWith("ROLE_") ? sanitizedRole : "ROLE_" + sanitizedRole;
+            
+            SimpleGrantedAuthority authority = new SimpleGrantedAuthority(finalRole);
+            UsernamePasswordAuthenticationToken authentication = 
+                new UsernamePasswordAuthenticationToken(userEmail, null, Collections.singletonList(authority));
+            
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            
+            log.info("GATEWAY AUTH: userId={}, verifiedRole={}, originalRole={}", 
+                userId, finalRole, userRole);
+        } else {
+            log.warn("GATEWAY AUTH MISSING: userId={}, role={}", userId, userRole);
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
